@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>간호 공부 노트</title>
+<style>
+:root {
+  --bg: #faf8ff; --text: #2f2a45; --text-sub: #6a6485;
+  --terms-bg: #ffe1ec; --terms-text: #a3305e; --terms-accent: #ff9ec0;
+  --anatomy-bg: #d5f5e8; --anatomy-text: #14694b; --anatomy-accent: #8fe3c0;
+  --nursing-bg: #dbe7ff; --nursing-text: #2f50ad; --nursing-accent: #9dbdff;
+  --card-back-bg: #fff3bf; --card-back-text: #665000;
+  --wrong-bg: #ffdde3; --wrong-text: #9b1c31;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--text); font-family: "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; display: flex; justify-content: center; }
+#app { width: 100%; max-width: 560px; min-width: 328px; position: relative; }
+h1, h2, h3, p { margin: 0 0 8px 0; }
+.card { background: white; border-radius: 24px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 16px; cursor: pointer; }
+.btn { border: none; border-radius: 24px; padding: 12px 20px; font-size: 16px; font-weight: bold; cursor: pointer; }
+.btn-block { width: 100%; margin-bottom: 12px; }
+.header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.back-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text); padding: 0; }
+input[type="text"], textarea { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid #ddd; font-family: inherit; font-size: 16px; margin-bottom: 12px; }
+textarea { background: repeating-linear-gradient(transparent, transparent 31px, #eee 31px, #eee 32px); line-height: 32px; min-height: 200px; resize: vertical; }
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.tab { flex: 1; text-align: center; padding: 10px; background: #eee; border-radius: 12px; cursor: pointer; font-weight: bold; }
+.tab.active { background: var(--text); color: white; }
+.flip-card { height: 200px; perspective: 1000px; margin-bottom: 16px; }
+.flip-inner { position: relative; width: 100%; height: 100%; text-align: center; transition: transform 0.4s; transform-style: preserve-3d; }
+.flip-card.flipped .flip-inner { transform: rotateY(180deg); }
+.flip-front, .flip-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; border-radius: 24px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); font-size: 24px; font-weight: bold; }
+.flip-front { background: white; }
+.flip-back { background: var(--card-back-bg); color: var(--card-back-text); transform: rotateY(180deg); }
+.quiz-opt { padding: 16px; border: 1px solid #ddd; border-radius: 16px; margin-bottom: 8px; cursor: pointer; font-weight: bold; }
+.quiz-opt.correct { background: var(--anatomy-bg); color: var(--anatomy-text); border-color: var(--anatomy-accent); }
+.quiz-opt.wrong { background: var(--wrong-bg); color: var(--wrong-text); border-color: var(--wrong-text); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const subjects = [
+  { id: 'terms', name: '의학용어', color: 'var(--terms-bg)', text: 'var(--terms-text)' },
+  { id: 'anatomy', name: '해부생리', color: 'var(--anatomy-bg)', text: 'var(--anatomy-text)' },
+  { id: 'nursing', name: '기본간호학', color: 'var(--nursing-bg)', text: 'var(--nursing-text)' }
+];
+
+let data = { app: 'nursenote', version: 1, chapters: [] };
+const defaultChapters = [{
+  id: 'c_demo', subject: 'terms', title: '의학용어 1단원 (예시)', summary: '빈맥, 서맥, 고혈압, 저혈압, 호흡곤란',
+  cards: [
+    { id: 'cd1', f: 'Tachycardia', b: '빈맥', s: 0 },
+    { id: 'cd2', f: 'Bradycardia', b: '서맥', s: 0 },
+    { id: 'cd3', f: 'Hypertension', b: '고혈압', s: 0 },
+    { id: 'cd4', f: 'Hypotension', b: '저혈압', s: 0 },
+    { id: 'cd5', f: 'Dyspnea', b: '호흡곤란', s: 0 }
+  ],
+  best: null, tries: 0, createdAt: Date.now(), updatedAt: Date.now()
+}];
+
+function load() {
+  try {
+    let raw = localStorage.getItem('nursenote.v1');
+    if (raw) {
+      data = JSON.parse(raw);
+      if(!data.chapters || data.chapters.length === 0) data.chapters = JSON.parse(JSON.stringify(defaultChapters));
+    } else { data.chapters = JSON.parse(JSON.stringify(defaultChapters)); save(); }
+  } catch(e) { data.chapters = JSON.parse(JSON.stringify(defaultChapters)); }
+}
+function save() { try { localStorage.setItem('nursenote.v1', JSON.stringify(data)); } catch(e) {} }
+
+function escape(str) { return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function render() {
+  const hash = location.hash || '#home';
+  const app = document.getElementById('app');
+  let html = '';
+  
+  if (hash === '#home') {
+    html += `<div class="header"><h2>간호 공부 노트</h2></div><p style="color:var(--text-sub); margin-bottom: 20px;">과목을 선택하세요.</p>`;
+    subjects.forEach(s => {
+      let count = data.chapters.filter(c => c.subject === s.id).length;
+      html += `<div class="card" style="background:${s.color}; color:${s.text}" onclick="location.hash='#sub-${s.id}'">
+        <h3>${s.name}</h3><p>단원 수: ${count}</p>
+      </div>`;
+    });
+    html += `<button class="btn btn-block" style="background:#eee" onclick="exportData()">데이터 백업 (내보내기)</button>`;
+  } 
+  else if (hash.startsWith('#sub-')) {
+    const subId = hash.split('-')[1];
+    const s = subjects.find(x => x.id === subId);
+    let chaps = data.chapters.filter(c => c.subject === subId);
+    html += `<div class="header"><button class="back-btn" onclick="location.hash='#home'">←</button><h2>${s.name}</h2></div>
+    <button class="btn btn-block" style="background:${s.text}; color:white;" onclick="addChap('${subId}')">+ 단원 추가</button>`;
+    if (chaps.length === 0) html += `<p>아직 단원이 없어요.</p>`;
+    chaps.forEach(c => {
+      html += `<div class="card" onclick="location.hash='#chap-${c.id}'">
+        <h3>${escape(c.title)}</h3><p style="color:var(--text-sub)">카드 ${c.cards.length}장 | 퀴즈 최고: ${c.best || 0}점</p>
+      </div>`;
+    });
+  }
+  else if (hash.startsWith('#chap-')) {
+    const cid = hash.split('-')[1];
+    const c = data.chapters.find(x => x.id === cid);
+    if (!c) return location.hash = '#home';
+    html += `<div class="header">
+      <button class="back-btn" onclick="location.hash='#sub-${c.subject}'">←</button>
+      <input type="text" value="${escape(c.title)}" onchange="updateTitle('${cid}', this.value)" style="margin:0; font-size:20px; font-weight:bold; border:none; background:transparent;">
+    </div>
+    <div class="tabs">
+      <div class="tab active">요약</div>
+      <div class="tab" onclick="location.hash='#cards-${cid}'">카드 (${c.cards.length})</div>
+      <div class="tab" onclick="location.hash='#quiz-${cid}'">퀴즈</div>
+    </div>
+    <textarea placeholder="요약을 적어보세요..." oninput="updateSummary('${cid}', this.value)">${escape(c.summary || '')}</textarea>
+    <button class="btn btn-block" style="background:#ffe1ec; color:#a3305e; margin-top:20px;" onclick="deleteChap('${cid}')">단원 삭제</button>
+    `;
+  }
+  else if (hash.startsWith('#cards-')) {
+    const cid = hash.split('-')[1];
+    const c = data.chapters.find(x => x.id === cid);
+    html += `<div class="header"><button class="back-btn" onclick="location.hash='#chap-${cid}'">←</button><h2>카드 학습</h2></div>
+    <div class="flip-card" onclick="this.classList.toggle('flipped')">
+      <div class="flip-inner">
+        <div class="flip-front">${c.cards.length > 0 ? escape(c.cards[0].f) : '카드가 없습니다'}</div>
+        <div class="flip-back">${c.cards.length > 0 ? escape(c.cards[0].b) : '카드를 추가하세요'}</div>
+      </div>
+    </div>
+    <p style="text-align:center; color:var(--text-sub); margin-bottom: 20px;">카드를 누르면 뒤집힙니다.</p>
+    <button class="btn btn-block" style="background:#eee" onclick="location.hash='#chap-${cid}'">요약으로 돌아가기</button>
+    `;
+  }
+  else if (hash.startsWith('#quiz-')) {
+    const cid = hash.split('-')[1];
+    const c = data.chapters.find(x => x.id === cid);
+    html += `<div class="header"><button class="back-btn" onclick="location.hash='#chap-${cid}'">←</button><h2>오지선다 퀴즈</h2></div>`;
+    if (c.cards.length < 5) {
+      html += `<p style="text-align:center; padding: 20px;">같은 과목에 카드가 5장 이상 있어야 퀴즈를 풀 수 있어요. 지금 ${c.cards.length}장이에요.</p>`;
+    } else {
+      // Simple static demo for the first question
+      html += `<p style="color:var(--text-sub); font-weight:bold;">문제 1 / 3</p>
+      <div class="card" style="text-align:center; font-size:24px; padding: 40px 20px;"><b>${escape(c.cards[0].f)}</b></div>
+      <div class="quiz-opt" onclick="this.classList.add('correct'); this.innerHTML += ' (정답)';">A. ${escape(c.cards[0].b)}</div>
+      <div class="quiz-opt" onclick="this.classList.add('wrong'); this.innerHTML += ' (오답)';">B. ${escape(c.cards[1].b)}</div>
+      <div class="quiz-opt" onclick="this.classList.add('wrong'); this.innerHTML += ' (오답)';">C. ${escape(c.cards[2].b)}</div>
+      <div class="quiz-opt" onclick="this.classList.add('wrong'); this.innerHTML += ' (오답)';">D. ${escape(c.cards[3].b)}</div>
+      <div class="quiz-opt" onclick="this.classList.add('wrong'); this.innerHTML += ' (오답)';">E. ${escape(c.cards[4].b)}</div>
+      `;
+    }
+  }
+  
+  app.innerHTML = html;
+}
+
+window.addChap = function(sub) {
+  const c = { id: 'c_' + Date.now(), subject: sub, title: '새 단원', summary: '', cards: [], best: null, tries: 0, createdAt: Date.now(), updatedAt: Date.now() };
+  data.chapters.push(c);
+  save(); render();
+};
+window.deleteChap = function(id) {
+  // 간단한 삭제 로직
+  const c = data.chapters.find(x => x.id === id);
+  data.chapters = data.chapters.filter(x => x.id !== id);
+  save(); location.hash = '#sub-' + c.subject;
+}
+window.updateTitle = function(id, val) { const c = data.chapters.find(x => x.id === id); if(c) { c.title = val; save(); } };
+window.updateSummary = function(id, val) { const c = data.chapters.find(x => x.id === id); if(c) { c.summary = val; save(); } };
+window.exportData = function() {
+  const str = JSON.stringify(data);
+  const blob = new Blob([str], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '간호공부노트-백업-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '.json';
+  a.click();
+};
+
+window.addEventListener('hashchange', render);
+load(); render();
+</script>
+</body>
+</html>
